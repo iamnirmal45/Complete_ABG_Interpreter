@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ABG Interpreter and Ventilator Rate Calculator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#EDF2F5; --surface:#FFFFFF; --sunk:#F5F8FA; --ink:#12222E; --muted:#4F6270; --line:#D2DDE4;
+  --acid:#B3263E; --acid-bg:#FBEAED; --base:#1F5FA8; --base-bg:#E7F0FA; --ok:#17806D; --ok-bg:#E4F4F0;
+  --warn:#9A5B00; --warn-bg:#FFF3DC; --brand:#0E4A5E; --brand-ink:#FFFFFF; --focus:#1F5FA8;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0B151C; --surface:#13222C; --sunk:#0F1C25; --ink:#E4EDF2; --muted:#93A8B6; --line:#243848;
+    --acid:#FF8296; --acid-bg:#3A1A22; --base:#77B6FF; --base-bg:#132B44; --ok:#4FD1B5; --ok-bg:#12332D;
+    --warn:#F2B24D; --warn-bg:#3A2B0F; --brand:#56C2DE; --brand-ink:#08222B; --focus:#77B6FF;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0B151C; --surface:#13222C; --sunk:#0F1C25; --ink:#E4EDF2; --muted:#93A8B6; --line:#243848;
+  --acid:#FF8296; --acid-bg:#3A1A22; --base:#77B6FF; --base-bg:#132B44; --ok:#4FD1B5; --ok-bg:#12332D;
+  --warn:#F2B24D; --warn-bg:#3A2B0F; --brand:#56C2DE; --brand-ink:#08222B; --focus:#77B6FF;
+}
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html{scroll-padding-top:env(safe-area-inset-top,0px);-webkit-text-size-adjust:100%}
+*,*::before,*::after{box-sizing:inherit}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:16px;line-height:1.5;font-variant-numeric:tabular-nums}
+.app{max-width:760px;margin:0 auto;padding:16px 14px 40px}
+h1{font-size:24px;line-height:1.15;margin:4px 0 4px;letter-spacing:-.01em}
+h2{font-size:19px;line-height:1.25;margin:0 0 8px}
+h3{font-size:16px;margin:18px 0 8px}
+p{margin:0 0 8px}
+.sub{color:var(--muted);margin:0 0 14px;font-size:15px}
+:focus-visible{outline:3px solid var(--focus);outline-offset:2px;border-radius:6px}
+
+/* tabs */
+.tabs{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;display:flex;gap:4px;padding:6px 0;background:var(--bg);border-bottom:1px solid var(--line);margin-bottom:14px}
+.tabs button{flex:1;min-height:44px;border:0;border-radius:10px;background:transparent;color:var(--muted);font:inherit;font-weight:700;cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--brand);color:var(--brand-ink)}
+
+/* forms */
+.grp{margin:0 0 6px}
+.grp>legend,.grp-title{font-weight:700;font-size:16px;margin:16px 0 6px;padding:0}
+fieldset{border:0;margin:0;padding:0;min-width:0}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+label{display:block;font-size:14px;color:var(--muted);margin-bottom:3px}
+input[type=number],select{width:100%;min-height:46px;padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);font:inherit;font-size:17px}
+input::placeholder{color:#8DA0AD}
+.seg{display:inline-flex;border:1.5px solid var(--line);border-radius:10px;overflow:hidden;background:var(--surface)}
+.seg button{min-height:40px;padding:0 14px;border:0;background:transparent;color:var(--muted);font:inherit;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--surface);font-weight:700}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:10px 0}
+.btn{min-height:44px;padding:0 16px;border-radius:10px;border:1.5px solid var(--brand);background:var(--brand);color:var(--brand-ink);font:inherit;font-weight:700;cursor:pointer}
+.btn.ghost{background:transparent;color:var(--brand)}
+.hint{font-size:13.5px;color:var(--muted);margin:4px 0 0}
+details.more{margin-top:10px}
+details.more summary{cursor:pointer;color:var(--brand);font-weight:700;min-height:32px}
+
+/* verdict */
+.verdict{border-left:8px solid var(--ok);background:var(--surface);border-radius:4px 14px 14px 4px;padding:14px 14px 12px;margin:18px 0 14px}
+.verdict.acid{border-color:var(--acid);background:linear-gradient(90deg,var(--acid-bg),var(--surface) 55%)}
+.verdict.base{border-color:var(--base);background:linear-gradient(90deg,var(--base-bg),var(--surface) 55%)}
+.verdict.ok{border-color:var(--ok);background:linear-gradient(90deg,var(--ok-bg),var(--surface) 55%)}
+.verdict .state{font-size:15px;color:var(--muted);margin:0 0 2px}
+.verdict h2{font-size:22px;margin:0 0 8px}
+.flags{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:6px}
+.flags li{padding:8px 10px;border-radius:8px;background:var(--warn-bg);color:var(--ink);font-size:15px;border-left:4px solid var(--warn)}
+.flags li.crit{background:var(--acid-bg);border-color:var(--acid)}
+
+/* sections */
+.block{margin:18px 0}
+.block>h2{margin-bottom:6px}
+.map{background:var(--surface);border-radius:12px;padding:8px 6px 4px;border:1px solid var(--line)}
+.map svg{display:block;width:100%;height:auto}
+.map .cap{font-size:13.5px;color:var(--muted);padding:4px 8px 8px;margin:0}
+.tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+table{width:100%;border-collapse:collapse;font-size:14.5px}
+th,td{padding:8px 10px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}
+th{font-size:13.5px;color:var(--muted);font-weight:700;background:var(--sunk)}
+tr:last-child td{border-bottom:0}
+td.abn{font-weight:700}
+td.abn.hi{color:var(--acid)}
+td.abn.lo{color:var(--base)}
+ol.steps{list-style:none;margin:0;padding:0;counter-reset:s}
+ol.steps>li{counter-increment:s;position:relative;padding:0 0 16px 40px}
+ol.steps>li::before{content:counter(s);position:absolute;left:0;top:0;width:28px;height:28px;border-radius:50%;background:var(--ink);color:var(--surface);font-weight:700;font-size:14px;display:grid;place-items:center}
+ol.steps>li::after{content:"";position:absolute;left:13px;top:32px;bottom:4px;width:2px;background:var(--line)}
+ol.steps>li:last-child::after{display:none}
+.st-h{font-weight:700;font-size:16.5px;line-height:1.3}
+.st-r{display:inline-block;margin:3px 0 4px;padding:1px 9px;border-radius:99px;font-size:14px;font-weight:700;background:var(--ok-bg);color:var(--ok)}
+.st-r.acid{background:var(--acid-bg);color:var(--acid)}
+.st-r.base{background:var(--base-bg);color:var(--base)}
+.st-r.warn{background:var(--warn-bg);color:var(--warn)}
+.st-b{font-size:15px}
+.st-b p{margin:0 0 6px}
+.eq{background:var(--sunk);border:1px solid var(--line);border-radius:8px;padding:6px 10px;margin:4px 0 6px;font-size:14.5px}
+.note{background:var(--warn-bg);border-left:4px solid var(--warn);border-radius:6px;padding:8px 10px;font-size:14.5px;margin:8px 0}
+.rec{background:var(--surface);border:2px solid var(--brand);border-radius:14px;padding:14px;margin:16px 0}
+.rec h2{margin-bottom:4px}
+.big{font-size:30px;font-weight:700;line-height:1.1;letter-spacing:-.01em}
+.chips{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 8px;margin:0 -2px;scrollbar-width:thin}
+.chip{flex:0 0 auto;min-height:44px;padding:0 14px;border-radius:99px;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);font:inherit;cursor:pointer;white-space:nowrap}
+.chip[aria-pressed="true"]{background:var(--brand);border-color:var(--brand);color:var(--brand-ink);font-weight:700}
+.guide{background:var(--sunk);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:15px;margin:6px 0 4px}
+.guide strong{display:block;margin-bottom:2px}
+footer{margin-top:26px;font-size:13.5px;color:var(--muted);border-top:1px solid var(--line);padding-top:12px}
+@media (min-width:600px){.g2.w{grid-template-columns:repeat(4,1fr)}}
+@media (prefers-reduced-motion:no-preference){.verdict{transition:border-color .2s}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Blood gas</h1>
+    <p class="sub">Full acid–base interpretation with the reasoning shown, and ventilator rate planning.</p>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="Tools">
+    <button role="tab" id="tab-i" aria-selected="true" aria-controls="p-i">Interpret</button>
+    <button role="tab" id="tab-v" aria-selected="false" aria-controls="p-v">Ventilator rate</button>
+  </nav>
+
+  <main>
+  <!-- INTERPRET -->
+  <section id="p-i" role="tabpanel" aria-labelledby="tab-i">
+    <div class="row" style="margin-top:0">
+      <span style="font-size:14px;color:var(--muted)">Sample</span>
+      <div class="seg" role="group" aria-label="Sample type">
+        <button type="button" data-sample="art" aria-pressed="true">Arterial</button>
+        <button type="button" data-sample="ven" aria-pressed="false">Venous</button>
+      </div>
+      <select id="ex" aria-label="Load an example" style="width:auto;min-height:40px;font-size:15px">
+        <option value="">Load an example</option>
+        <option value="dka">DKA</option>
+        <option value="sal">Salicylate toxicity (normal pH, mixed)</option>
+        <option value="sep">Sepsis, low albumin (HAGMA + NAGMA)</option>
+        <option value="copd">Chronic hypercapnia (COPD)</option>
+        <option value="opi">Opioid overdose (acute respiratory acidosis)</option>
+        <option value="vom">Vomiting (metabolic alkalosis)</option>
+      </select>
+    </div>
+
+    <fieldset class="grp">
+      <legend>Blood gas</legend>
+      <div class="g3">
+        <div><label for="ph">pH</label><input id="ph" type="number" step="0.01" inputmode="decimal" placeholder="7.40"></div>
+        <div><label for="pco2">PaCO₂ (mmHg)</label><input id="pco2" type="number" step="any" inputmode="decimal" placeholder="40"></div>
+        <div><label for="hco3">HCO₃⁻ (mEq/L)</label><input id="hco3" type="number" step="any" inputmode="decimal" placeholder="calculated if blank"></div>
+      </div>
+    </fieldset>
+    <fieldset class="grp">
+      <legend>Electrolytes for anion gap</legend>
+      <div class="g2 w">
+        <div><label for="na">Na⁺ (mEq/L)</label><input id="na" type="number" step="any" inputmode="decimal"></div>
+        <div><label for="cl">Cl⁻ (mEq/L)</label><input id="cl" type="number" step="any" inputmode="decimal"></div>
+        <div><label for="alb">Albumin (g/dL)</label><input id="alb" type="number" step="any" inputmode="decimal"></div>
+        <div><label for="lac">Lactate (mmol/L)</label><input id="lac" type="number" step="any" inputmode="decimal"></div>
+      </div>
+    </fieldset>
+    <fieldset class="grp">
+      <legend>Oxygenation</legend>
+      <div class="g3">
+        <div><label for="pao2">PaO₂ (mmHg)</label><input id="pao2" type="number" step="any" inputmode="decimal"></div>
+        <div><label for="fio2">FiO₂ (%)</label><input id="fio2" type="number" step="any" inputmode="decimal" placeholder="21"></div>
+        <div><label for="age">Age (years)</label><input id="age" type="number" step="1" inputmode="numeric"></div>
+      </div>
+      <details class="more"><summary>Altitude</summary>
+        <div style="max-width:220px;margin-top:6px"><label for="patm">Barometric pressure (mmHg)</label><input id="patm" type="number" step="any" inputmode="decimal" placeholder="760"></div>
+      </details>
+    </fieldset>
+    <div class="row"><button class="btn ghost" type="button" id="clear">Clear all</button></div>
+
+    <div id="res" aria-live="polite">
+      <p class="hint" style="margin-top:18px">Enter pH and PaCO₂ to start. Bicarbonate is calculated if left blank. Add Na⁺ and Cl⁻ to find hidden metabolic disorders, even when pH is normal.</p>
+    </div>
+  </section>
+
+  <!-- VENTILATOR -->
+  <section id="p-v" role="tabpanel" aria-labelledby="tab-v" hidden>
+    <div class="grp-title" style="margin-top:0">Scenario</div>
+    <div class="chips" id="scen" role="group" aria-label="Scenario"></div>
+    <div class="guide" id="guide" hidden></div>
+
+    <fieldset class="grp">
+      <legend>Current gas</legend>
+      <div class="g3">
+        <div><label for="v_ph">pH</label><input id="v_ph" type="number" step="0.01" inputmode="decimal"></div>
+        <div><label for="v_pco2">PaCO₂ (mmHg)</label><input id="v_pco2" type="number" step="any" inputmode="decimal"></div>
+        <div><label for="v_hco3">HCO₃⁻ (mEq/L)</label><input id="v_hco3" type="number" step="any" inputmode="decimal"></div>
+      </div>
+      <div class="row"><button class="btn ghost" type="button" id="imp">Import from Interpret tab</button></div>
+    </fieldset>
+
+    <fieldset class="grp">
+      <legend>Target</legend>
+      <div class="seg" role="group" aria-label="Target type" id="modeSeg">
+        <button type="button" data-mode="ph" aria-pressed="true">Target pH</button>
+        <button type="button" data-mode="pco2" aria-pressed="false">Target PaCO₂</button>
+        <button type="button" data-mode="winter" aria-pressed="false">Winter's</button>
+      </div>
+      <div class="g2" style="margin-top:10px">
+        <div id="w_tph"><label for="v_tph">Goal pH</label><input id="v_tph" type="number" step="0.01" inputmode="decimal" value="7.38"></div>
+        <div id="w_tpco2" hidden><label for="v_tpco2">Goal PaCO₂ (mmHg)</label><input id="v_tpco2" type="number" step="any" inputmode="decimal"></div>
+      </div>
+      <p class="hint" id="modeHint">Goal PaCO₂ is derived from the current HCO₃⁻ with Henderson–Hasselbalch.</p>
+    </fieldset>
+
+    <fieldset class="grp">
+      <legend>Current ventilator settings</legend>
+      <div class="g2 w">
+        <div><label for="v_rr">Set rate (/min)</label><input id="v_rr" type="number" step="1" inputmode="numeric"></div>
+        <div><label for="v_trr">Total rate (/min)</label><input id="v_trr" type="number" step="1" inputmode="numeric" placeholder="if triggering"></div>
+        <div><label for="v_vt">Tidal volume (mL)</label><input id="v_vt" type="number" step="any" inputmode="decimal"></div>
+        <div><label for="v_ti">Inspiratory time (s)</label><input id="v_ti" type="number" step="0.1" inputmode="decimal" value="1.0"></div>
+        <div><label for="v_ht">Height (cm)</label><input id="v_ht" type="number" step="any" inputmode="decimal"></div>
+        <div><label for="v_sex">Sex (for predicted weight)</label><select id="v_sex"><option value="m">Male</option><option value="f">Female</option></select></div>
+        <div><label for="v_dd">Extra dead space (mL)</label><input id="v_dd" type="number" step="any" inputmode="decimal" placeholder="0"></div>
+      </div>
+      <p class="hint">Height and sex give predicted body weight (PBW), which enables mL/kg limits and tidal volume options. Extra dead space covers HME filters or long circuit connectors.</p>
+    </fieldset>
+
+    <div id="vres" aria-live="polite"></div>
+  </section>
+  </main>
+
+  <footer>
+    Clinical decision support built on standard bedside rules (Henderson–Hasselbalch, Winter's formula, acute and chronic respiratory compensation rules, albumin-corrected anion gap, delta ratio, ARDSNet ventilation limits). It does not replace clinical judgment; verify against the patient and local protocols. All values use mmHg and mEq/L.
+  </footer>
+</div>
+
+<script>
+/*LOGIC_START*/
+const r=(x,d=1)=>(x==null||!isFinite(x))?'–':(+x).toFixed(d);
+const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
+const B=t=>'<b>'+t+'</b>';
+
+function analyze(inp){
+  const ph=inp.ph, pco2=inp.pco2;
+  if(ph==null||pco2==null) return {ready:false};
+  const errs=[];
+  if(ph<6.5||ph>8.0) errs.push('pH is outside 6.5–8.0. Check the entry.');
+  if(pco2<5||pco2>200) errs.push('PaCO₂ is outside 5–200 mmHg. Check the entry.');
+  if(inp.hco3!=null&&(inp.hco3<1||inp.hco3>70)) errs.push('HCO₃⁻ is outside 1–70 mEq/L. Check the entry.');
+  if(errs.length) return {ready:false,errs};
+
+  const ven=inp.sample==='ven';
+  const hco3calc=0.03*pco2*Math.pow(10,ph-6.1);
+  const hco3given=inp.hco3!=null;
+  const hco3=hco3given?inp.hco3:hco3calc;
+  let alb=inp.alb; if(alb!=null&&alb>10) alb=alb/10;
+  const steps=[], flags=[], rows=[];
+
+  if(ven) flags.push({t:'Venous sample: pH runs about 0.03–0.05 lower and PCO₂ about 4–6 mmHg higher than arterial. Compensation rules were derived from arterial gas, so treat the result as approximate. A normal venous PCO₂ (<45) makes arterial hypercapnia unlikely; a high one needs an arterial gas.',c:''});
+
+  /* 1 validity */
+  if(!hco3given){
+    steps.push({title:'Check that the numbers agree',res:'HCO₃⁻ calculated',tone:'ok',html:
+      `<p>HCO₃⁻ was not entered, so it is calculated from pH and PaCO₂.</p><div class="eq">HCO₃⁻ = 0.03 × ${r(pco2,0)} × 10^(${r(ph,2)} − 6.1) = ${B(r(hco3))} mEq/L</div>`});
+  } else {
+    const cph=6.1+Math.log10(hco3/(0.03*pco2)); const d=ph-cph;
+    const h1=Math.pow(10,9-ph), h2=24*pco2/hco3; const bad=Math.abs(d)>0.03;
+    steps.push({title:'Check that the numbers agree',res:bad?'Internally inconsistent':'Internally consistent',tone:bad?'warn':'ok',html:
+      `<div class="eq">pH = 6.1 + log(HCO₃⁻ ÷ 0.03·PaCO₂) = ${B(r(cph,2))} (measured ${r(ph,2)}, difference ${r(d,2)})<br>[H⁺] from pH = ${r(h1,0)} nEq/L; from 24·PaCO₂/HCO₃⁻ = ${r(h2,0)} nEq/L</div>`+
+      (bad?`<div class="note">Difference exceeds 0.03 pH units. Suspect a transcription error, a delayed or air-contaminated sample, or a bicarbonate taken from a different sample (serum total CO₂ runs 1–2 mEq/L above ABG bicarbonate). Repeat the gas before acting on this interpretation.</div>`:`<p>Henderson–Hasselbalch is satisfied, so the gas is plausible.</p>`)});
+    if(bad) flags.push({t:'pH, PaCO₂ and HCO₃⁻ do not satisfy Henderson–Hasselbalch (Δ '+r(d,2)+'). Verify the values or repeat the sample.',c:'crit'});
+  }
+
+  /* 2 pH */
+  const acidemia=ph<7.35, alkalemia=ph>7.45;
+  const phLabel=acidemia?'Acidemia':alkalemia?'Alkalemia':'Normal pH';
+  const tone=acidemia?'acid':alkalemia?'base':'ok';
+  steps.push({title:'Acidemia or alkalemia?',res:`${phLabel} (pH ${r(ph,2)})`,tone:tone==='ok'?'ok':tone,html:
+    `<p>Reference pH 7.35–7.45. ${acidemia?'The blood is acidemic, so the primary process is an acidosis.':alkalemia?'The blood is alkalemic, so the primary process is an alkalosis.':'A normal pH does not exclude a disorder: opposing processes (mixed disorders) or full compensation can hold the pH normal.'}</p>`+
+    ((ph<7.15||ph>7.60)?`<div class="note">pH is in a life-threatening range.</div>`:'')});
+  if(ph<7.15||ph>7.60) flags.push({t:'Critical pH ('+r(ph,2)+'). Time-critical: address airway, ventilation and the cause now.',c:'crit'});
+
+  /* 3 primary */
+  const pos={racid:(pco2-40)/40,ralk:(40-pco2)/40,macid:(24-hco3)/24,malk:(hco3-24)/24};
+  const flagged={racid:pco2>45,ralk:pco2<35,macid:hco3<22,malk:hco3>26};
+  const cands=acidemia?['racid','macid']:alkalemia?['ralk','malk']:['racid','ralk','macid','malk'];
+  let pool=cands.filter(c=>flagged[c]);
+  if(!pool.length&&(acidemia||alkalemia)) pool=cands.filter(c=>pos[c]>0);
+  const primary=pool.length?pool.reduce((a,b)=>pos[a]>=pos[b]?a:b):'none';
+  const NAME={racid:'Respiratory acidosis',ralk:'Respiratory alkalosis',macid:'Metabolic acidosis',malk:'Metabolic alkalosis',none:'No primary disorder'};
+  const cd=(v,lo,hi)=>v>hi?'high':v<lo?'low':'normal';
+  steps.push({title:'Primary disorder',res:NAME[primary],tone:primary==='none'?'ok':(primary==='racid'||primary==='macid')?'acid':'base',html:
+    `<p>PaCO₂ ${B(r(pco2))} is ${cd(pco2,35,45)} (35–45). HCO₃⁻ ${B(r(hco3))} is ${cd(hco3,22,26)} (22–26).</p>`+
+    (primary==='none'?'<p>Both components are within range and the pH is normal.</p>':
+     (acidemia||alkalemia)?`<p>The component that moves in the same direction as the pH is primary. ${NAME[primary]} explains the ${acidemia?'acidemia':'alkalemia'}.</p>`:
+     `<p>pH is normal but the components are abnormal. The one deviating most from 40 mmHg / 24 mEq/L is labelled primary (${NAME[primary]}); the other is compensation or a second disorder, which the next step decides.</p>`)});
+
+  /* 4 compensation */
+  let comp={kind:'none'};
+  if(primary==='macid'){
+    const e=1.5*hco3+8, lo=e-2, hi=e+2;
+    const kind=pco2>hi?'add_racid':pco2<lo?'add_ralk':'ok';
+    comp={kind,exp:`${r(lo)}–${r(hi)}`};
+    steps.push({title:'Is compensation appropriate?',res:kind==='ok'?'Appropriate respiratory compensation':kind==='add_racid'?'Inadequate: concurrent respiratory acidosis':'Excessive: concurrent respiratory alkalosis',tone:kind==='ok'?'ok':kind==='add_racid'?'acid':'base',html:
+      `<div class="eq">Winter's formula: expected PaCO₂ = 1.5 × ${r(hco3)} + 8 = ${B(r(e))} ± 2 → ${B(comp.exp)} mmHg</div><p>Measured PaCO₂ ${B(r(pco2))}. `+
+      (kind==='ok'?'It is inside the expected range, so the lungs are compensating appropriately and there is no additional respiratory disorder.':
+       kind==='add_racid'?'It is above the range: the patient is not ventilating enough to compensate. Think fatigue, sedation, airway or lung disease, or neuromuscular weakness. This pattern signals impending ventilatory failure.':
+       'It is below the range: an additional process is driving ventilation (salicylate, sepsis, hypoxemia, pain, pregnancy, liver failure, or over-ventilation on a ventilator).')+'</p>'});
+    if(kind==='add_racid') flags.push({t:'PaCO₂ is above Winter\'s ceiling: the patient is failing to maintain respiratory compensation. High risk of rapid deterioration. If ventilating, match the required minute ventilation (Ventilator rate tab).',c:'crit'});
+  } else if(primary==='malk'){
+    const e=40+0.7*(hco3-24), lo=e-5, hi=e+5;
+    const kind=pco2>hi?'add_racid':pco2<lo?'add_ralk':'ok';
+    comp={kind,exp:`${r(lo)}–${r(hi)}`};
+    steps.push({title:'Is compensation appropriate?',res:kind==='ok'?'Appropriate respiratory compensation':kind==='add_racid'?'PaCO₂ higher than expected: concurrent respiratory acidosis':'PaCO₂ lower than expected: concurrent respiratory alkalosis',tone:kind==='ok'?'ok':kind==='add_racid'?'acid':'base',html:
+      `<div class="eq">Expected PaCO₂ = 40 + 0.7 × (${r(hco3)} − 24) = ${B(r(e))} ± 5 → ${B(comp.exp)} mmHg</div><p>Measured PaCO₂ ${B(r(pco2))}. `+
+      (kind==='ok'?'Within the expected range: appropriate hypoventilatory compensation.':kind==='add_racid'?'Above the range: additional hypoventilation or a post-hypercapnic state.':'Below the range: an additional respiratory alkalosis.')+
+      ` Compensation is limited in practice: PaCO₂ rarely exceeds 55–60 mmHg because hypoxemia intervenes.</p>`});
+  } else if(primary==='racid'){
+    const dp=(pco2-40)/10, ea=24+1*dp, ec=24+3.5*dp;
+    const dA=hco3-ea, dC=hco3-ec;
+    let kind;
+    if(Math.abs(dA)<=2&&Math.abs(dA)<=Math.abs(dC)) kind='acute';
+    else if(Math.abs(dC)<=2) kind='chronic';
+    else if(hco3<ea) kind='add_macid';
+    else if(hco3>ec) kind='add_malk';
+    else kind='subacute';
+    const pha=7.40-0.08*dp, phc=7.40-0.03*dp;
+    const ambiguous=(ec-ea)<4;
+    comp={kind,exp:`${r(ea)} (acute) to ${r(ec)} (chronic)`};
+    const RES={acute:'Acute (uncompensated) respiratory acidosis',chronic:'Chronic respiratory acidosis with renal compensation',subacute:'Subacute or acute-on-chronic respiratory acidosis',add_macid:'HCO₃⁻ too low: concurrent metabolic acidosis',add_malk:'HCO₃⁻ too high: concurrent metabolic alkalosis'};
+    steps.push({title:'Is compensation appropriate?',res:RES[kind],tone:kind==='add_malk'?'base':'acid',html:
+      `<div class="eq">ΔPaCO₂ = ${r(pco2-40)} mmHg above 40<br>Acute: HCO₃⁻ rises 1 per 10 mmHg → expected ${B(r(ea))} ± 2 (pH ≈ ${r(pha,2)})<br>Chronic: HCO₃⁻ rises 3.5 per 10 mmHg → expected ${B(r(ec))} ± 2 (pH ≈ ${r(phc,2)})</div>`+
+      `<p>Measured HCO₃⁻ ${B(r(hco3))}, pH ${r(ph,2)}. `+
+      ({acute:'HCO₃⁻ matches the acute prediction: renal compensation has not had time to develop (hours), so the process is new.',
+        chronic:'HCO₃⁻ matches the chronic prediction: renal retention of bicarbonate over days to weeks. The pH is near normal because the kidneys have compensated.',
+        subacute:'HCO₃⁻ sits between the acute and chronic predictions: compensation is under way (1–3 days), or an acute insult has landed on chronic hypercapnia.',
+        add_macid:'HCO₃⁻ is below even the acute prediction: a second, metabolic acidosis is present (lactate, ketones, renal failure).',
+        add_malk:'HCO₃⁻ is above even the chronic prediction: a second, metabolic alkalosis is present (diuretics, vomiting, steroids, post-hypercapnic).'})[kind]+'</p>'+
+      (ambiguous&&(kind==='acute'||kind==='chronic')?`<div class="note">At this PaCO₂ the acute and chronic predictions differ by less than 4 mEq/L, so acuity cannot be assigned from the gas alone. Use history and baseline values.</div>`:'')});
+  } else if(primary==='ralk'){
+    const dp=(40-pco2)/10, ea=24-2*dp, ec=24-4*dp;
+    const dA=hco3-ea, dC=hco3-ec;
+    let kind;
+    if(Math.abs(dA)<=2&&Math.abs(dA)<=Math.abs(dC)) kind='acute';
+    else if(Math.abs(dC)<=2) kind='chronic';
+    else if(hco3>ea) kind='add_malk';
+    else if(hco3<ec) kind='add_macid';
+    else kind='subacute';
+    const pha=7.40+0.08*dp, phc=7.40+0.03*dp;
+    const ambiguous=(ea-ec)<4;
+    comp={kind,exp:`${r(ea)} (acute) to ${r(ec)} (chronic)`};
+    const RES={acute:'Acute respiratory alkalosis',chronic:'Chronic respiratory alkalosis with renal compensation',subacute:'Subacute respiratory alkalosis',add_macid:'HCO₃⁻ too low: concurrent metabolic acidosis',add_malk:'HCO₃⁻ too high: concurrent metabolic alkalosis'};
+    steps.push({title:'Is compensation appropriate?',res:RES[kind],tone:kind==='add_macid'?'acid':'base',html:
+      `<div class="eq">ΔPaCO₂ = ${r(40-pco2)} mmHg below 40<br>Acute: HCO₃⁻ falls 2 per 10 mmHg → expected ${B(r(ea))} ± 2 (pH ≈ ${r(pha,2)})<br>Chronic: HCO₃⁻ falls 4 per 10 mmHg (some sources use 5) → expected ${B(r(ec))} ± 2 (pH ≈ ${r(phc,2)})</div>`+
+      `<p>Measured HCO₃⁻ ${B(r(hco3))}, pH ${r(ph,2)}. `+
+      ({acute:'HCO₃⁻ matches the acute prediction (immediate buffering only): a new process.',
+        chronic:'HCO₃⁻ matches the chronic prediction: renal compensation over days.',
+        subacute:'HCO₃⁻ falls between the acute and chronic predictions: compensation in progress.',
+        add_macid:'HCO₃⁻ is lower than even the chronic prediction: a concurrent metabolic acidosis is present.',
+        add_malk:'HCO₃⁻ is higher than the acute prediction: a concurrent metabolic alkalosis is present.'})[kind]+'</p>'+
+      (ambiguous&&(kind==='acute'||kind==='chronic')?`<div class="note">At this PaCO₂ the acute and chronic predictions differ by less than 4 mEq/L, so acuity cannot be assigned from the gas alone.</div>`:'')});
+  } else {
+    steps.push({title:'Is compensation appropriate?',res:'Nothing to compensate',tone:'ok',html:'<p>Components are within range, so there is no compensation to assess. The anion gap (next step) still screens for a hidden metabolic disorder.</p>'});
+  }
+
+  /* 5 anion gap */
+  let ag=null,agc=null,hag=false,dAG=null,ratio=null,deltaKind=null,nag=false,malkC=false,dH=24-hco3;
+  const haveAG=(inp.na!=null&&inp.cl!=null);
+  if(haveAG){
+    ag=inp.na-inp.cl-hco3;
+    agc=alb!=null?ag+2.5*(4-alb):ag;
+    hag=agc>12; dAG=agc-12;
+    let body=`<div class="eq">AG = Na⁺ − (Cl⁻ + HCO₃⁻) = ${r(inp.na,0)} − (${r(inp.cl,0)} + ${r(hco3)}) = ${B(r(ag))}`+
+      (alb!=null?`<br>Albumin-corrected AG = ${r(ag)} + 2.5 × (4.0 − ${r(alb)}) = ${B(r(agc))}`:'')+`</div>`;
+    if(alb==null) body+=`<p class="hint">Albumin not entered. Each 1 g/dL fall in albumin lowers the AG by about 2.5, so a low albumin can mask a raised gap.</p>`;
+    let res,t='ok';
+    if(hag){
+      res=`Raised anion gap (${r(agc)})`; t='acid';
+      body+=`<p>Normal is about 8–12 (use your lab's range). ${agc<=16?'The elevation is borderline (12–16): interpret with the lab\'s reference range and the clinical picture. ':''}A raised AG means an unmeasured anion is present: ${B('high anion gap metabolic acidosis')} exists regardless of pH or HCO₃⁻.${agc>=20?' An AG ≥20 is a primary metabolic acidosis in every case.':''}</p>`;
+      if(dH<=0){
+        deltaKind='malk'; malkC=true;
+        body+=`<p>${B('Delta ratio not applicable')}: HCO₃⁻ (${r(hco3)}) is not reduced despite the raised AG. This means a ${B('concurrent metabolic alkalosis')} (or compensated chronic respiratory acidosis) has raised HCO₃⁻ to offset the acid load.</p>`;
+      } else {
+        ratio=dAG/dH;
+        body+=`<div class="eq">Delta ratio = ΔAG ÷ ΔHCO₃⁻ = (${r(agc)} − 12) ÷ (24 − ${r(hco3)}) = ${B(r(dAG))} ÷ ${B(r(dH))} = ${B(r(ratio,2))}</div>`;
+        if(ratio<0.4){deltaKind='nag';nag=true;body+=`<p>Ratio &lt;0.4: a ${B('normal-AG (hyperchloremic) acidosis')} dominates; the AG rise is a minor addition.</p>`;}
+        else if(ratio<0.8){deltaKind='nag';nag=true;body+=`<p>Ratio 0.4–0.8: ${B('mixed high-AG and normal-AG metabolic acidosis')}. Also seen in renal failure, where bicarbonate loss accompanies anion retention.</p>`;}
+        else if(ratio<=2){deltaKind='pure';body+=`<p>Ratio 0.8–2: a ${B('pure high-AG metabolic acidosis')}. (Ketoacidosis tends toward ~1, lactic acidosis toward 1.6.)</p>`;}
+        else {deltaKind='malk';malkC=true;body+=`<p>Ratio &gt;2: bicarbonate is higher than the acid load explains, so a ${B('concurrent metabolic alkalosis')} (or chronic hypercapnia with renal compensation) is present.</p>`;}
+      }
+      if(inp.lac!=null){
+        const un=dAG-inp.lac;
+        body+=`<p>Lactate ${r(inp.lac)} mmol/L accounts for about ${r(Math.min(inp.lac,dAG))} of the ${r(dAG)} AG rise. `+
+          (un>5?`${B('Unexplained gap ≈ '+r(un))}: check ketones (β-hydroxybutyrate), creatinine/urea, osmolar gap for toxic alcohols, salicylate level, and 5-oxoproline / D-lactate if the history fits.`:un>=-2?'Lactate largely explains the gap.':'Lactate exceeds the AG rise, which suggests a concurrent metabolic alkalosis or an albumin or measurement issue.')+'</p>';
+      }
+    } else {
+      res=`Normal anion gap (${r(agc)})`; t='ok';
+      body+=`<p>Normal is about 8–12. No unmeasured anion is detected.`+(primary==='macid'||comp.kind==='add_macid'?` The metabolic acidosis is therefore ${B('normal-AG (hyperchloremic)')}: bicarbonate loss or chloride gain.`:'')+(agc<3?' A very low AG suggests uncorrected hypoalbuminemia, paraproteinemia, or lithium or bromide.':'')+'</p>';
+    }
+    steps.push({title:'Anion gap and delta ratio',res,tone:t,html:body});
+  } else {
+    steps.push({title:'Anion gap and delta ratio',res:'Not evaluated',tone:'warn',html:'<p>Enter Na⁺ and Cl⁻. The anion gap is the only way to detect a hidden metabolic acidosis when pH and HCO₃⁻ look normal, and delta ratio then separates pure from mixed metabolic disorders.</p>'});
+  }
+
+  /* 6 oxygenation */
+  let pf=null,aa=null,paO2=inp.pao2;
+  if(ven){
+    steps.push({title:'Oxygenation',res:'Not assessed',tone:'warn',html:'<p>Venous PO₂ does not reflect arterial oxygenation. Use pulse oximetry or an arterial sample.</p>'});
+  } else if(paO2==null){
+    steps.push({title:'Oxygenation',res:'Not entered',tone:'warn',html:'<p>Add PaO₂ and FiO₂ to calculate the PaO₂/FiO₂ ratio and the A–a gradient.</p>'});
+  } else {
+    const fi=(inp.fio2!=null?inp.fio2:21)/100; const patm=inp.patm||760;
+    const PAO2=fi*(patm-47)-pco2/0.8; aa=PAO2-paO2; pf=paO2/fi;
+    const exp=inp.age!=null?inp.age/4+4:null;
+    const pfLbl=pf>=400?'normal':pf>=300?'mildly reduced':pf>=200?'reduced (200–299)':pf>=100?'markedly reduced (100–199)':'severely reduced (<100)';
+    const hyp=paO2<60?'severe hypoxemia':paO2<80?'mild hypoxemia':'no hypoxemia';
+    const hypo=paO2<60||pf<300;
+    let body=`<div class="eq">PAO₂ = FiO₂ × (${r(patm,0)} − 47) − PaCO₂/0.8 = ${r(fi,2)} × ${r(patm-47,0)} − ${r(pco2/0.8)} = ${B(r(PAO2))} mmHg<br>A–a gradient = ${r(PAO2)} − ${r(paO2,0)} = ${B(r(aa))} mmHg`+(exp!=null?` (expected on room air ≈ age/4 + 4 = ${r(exp)})`:'')+`<br>PaO₂/FiO₂ = ${r(paO2,0)} ÷ ${r(fi,2)} = ${B(r(pf,0))} (${pfLbl})</div>`;
+    body+=`<p>PaO₂ ${r(paO2,0)}: ${hyp}${inp.fio2!=null&&inp.fio2>21?' on supplemental oxygen':''}.</p>`;
+    if(!(inp.fio2!=null&&inp.fio2>21)&&exp!=null){
+      body+=aa>exp+3?`<p>A–a gradient is ${B('raised')}: V/Q mismatch, shunt, or diffusion impairment (pneumonia, edema, ARDS, PE, ILD, atelectasis).</p>`:`<p>A–a gradient is ${B('normal')}${hypo?': hypoxemia here is from hypoventilation, low inspired oxygen, or altitude rather than intrinsic lung disease':''}.</p>`;
+    } else if(inp.fio2!=null&&inp.fio2>21){
+      body+='<p>On supplemental oxygen the expected A–a gradient rises (roughly 5–7 mmHg per 10% FiO₂), so rely on the PaO₂/FiO₂ ratio. ARDS severity bands apply only with PEEP ≥5, bilateral opacities and a non-cardiogenic cause.</p>';
+    } else body+='<p class="hint">Add age to compare the A–a gradient with its expected value.</p>';
+    if(hypo||pco2>45||pco2<35){
+      const t1=(paO2<60||pf<300)&&pco2<=45, t2=pco2>45&&(paO2<60||pf<300), t2b=pco2>50;
+      if(t1) body+=`<p>${B('Type 1 (hypoxemic) respiratory failure pattern')}: low PaO₂ with a normal or low PaCO₂.</p>`;
+      else if(t2) body+=`<p>${B('Type 2 (hypercapnic) with hypoxemia')}: both gas exchange and ventilation are impaired.</p>`;
+      else if(t2b&&acidemia) body+=`<p>${B('Hypercapnic respiratory failure')} (PaCO₂ &gt;50 with acidemia).</p>`;
+    }
+    steps.push({title:'Oxygenation',res:`PaO₂/FiO₂ ${r(pf,0)}, A–a ${r(aa)}`,tone:hypo?'warn':'ok',html:body});
+    if(paO2<60) flags.push({t:'PaO₂ '+r(paO2,0)+' mmHg: significant hypoxemia.',c:'crit'});
+  }
+
+  /* diagnosis composition */
+  const macP=primary==='macid'||comp.kind==='add_macid'||hag;
+  const malkP=primary==='malk'||comp.kind==='add_malk'||malkC;
+  const parts=[];
+  if(macP){
+    if(hag) parts.push(nag?'High-AG + normal-AG metabolic acidosis':'High anion gap metabolic acidosis');
+    else parts.push(haveAG?'Normal anion gap (hyperchloremic) metabolic acidosis':'Metabolic acidosis (anion gap not assessed)');
+  }
+  if(malkP) parts.push('Metabolic alkalosis');
+  let respTxt=null, suffix='';
+  if(primary==='macid'||primary==='malk'){
+    if(comp.kind==='add_racid') respTxt='Respiratory acidosis (inadequate compensation)';
+    else if(comp.kind==='add_ralk') respTxt='Respiratory alkalosis';
+    else suffix=' with appropriate respiratory compensation';
+  } else if(primary==='racid'){
+    respTxt={acute:'Acute respiratory acidosis',chronic:'Chronic respiratory acidosis (renally compensated)',subacute:'Subacute / acute-on-chronic respiratory acidosis',add_macid:'Respiratory acidosis',add_malk:'Respiratory acidosis'}[comp.kind];
+  } else if(primary==='ralk'){
+    respTxt={acute:'Acute respiratory alkalosis',chronic:'Chronic respiratory alkalosis (renally compensated)',subacute:'Subacute respiratory alkalosis',add_macid:'Respiratory alkalosis',add_malk:'Respiratory alkalosis'}[comp.kind];
+  }
+  if(respTxt) parts.push(respTxt);
+  if(!parts.length) parts.push(acidemia||alkalemia?'Unclassified disturbance':'Normal acid–base status');
+  let headline=parts.join(' + ')+suffix;
+  const nDis=parts.length;
+  if(nDis>=3) flags.push({t:'Triple disorder pattern. Confirm with a repeat gas and clinical context.',c:''});
+  if(acidemia&&pco2>45) flags.push({t:'Acute hypercapnic acidemia (pH <7.35, PaCO₂ >45): meets the usual threshold to consider non-invasive or invasive ventilatory support if not chronic or already treated.',c:''});
+
+  /* causes */
+  const ck=[];
+  if(macP){ck.push(hag?'hagma':'nagma'); if(hag&&nag) ck.push('nagma');}
+  if(malkP) ck.push('malk');
+  if(primary==='racid'||(primary!=='racid'&&(comp.kind==='add_racid'))) ck.push('racid');
+  if(primary==='ralk'||comp.kind==='add_ralk') ck.push('ralk');
+
+  /* key values */
+  const st=(v,lo,hi)=>v>hi?'hi':v<lo?'lo':'';
+  rows.push(['pH',r(ph,2),'7.35–7.45',st(ph,7.35,7.45)]);
+  rows.push(['PaCO₂ (mmHg)',r(pco2),'35–45',st(pco2,35,45)]);
+  rows.push(['HCO₃⁻ (mEq/L)',r(hco3)+(hco3given?'':' (calc.)'),'22–26',st(hco3,22,26)]);
+  if(comp.exp) rows.push([primary==='racid'||primary==='ralk'?'Expected HCO₃⁻':'Expected PaCO₂',comp.exp,primary==='macid'?"Winter's ±2":primary==='malk'?'40 + 0.7ΔHCO₃⁻ ±5':'acute → chronic',comp.kind==='ok'||comp.kind==='acute'||comp.kind==='chronic'?'':'hi']);
+  if(ag!=null){
+    rows.push(['Anion gap',r(ag),'8–12',st(ag,8,12)]);
+    if(alb!=null) rows.push(['AG corrected for albumin',r(agc),'8–12',st(agc,8,12)]);
+    if(ratio!=null) rows.push(['Delta ratio',r(ratio,2),'0.8–2 = pure HAGMA',(ratio<0.8||ratio>2)?'hi':'']);
+  }
+  if(pf!=null){
+    rows.push(['PaO₂/FiO₂',r(pf,0),'>400',pf<300?'lo':'']);
+    rows.push(['A–a gradient (mmHg)',r(aa),inp.age!=null?'≈ '+r(inp.age/4+4)+' (room air)':'age/4 + 4',(inp.age!=null&&!(inp.fio2>21)&&aa>inp.age/4+7)?'hi':'']);
+  }
+
+  return {ready:true,ph,pco2,hco3,hco3given,primary,comp,steps,flags,rows,headline,tone,phLabel,ck,ag,agc,hag,ratio,pf,aa,ven};
+}
+
+const CAUSES={
+  hagma:['High anion gap metabolic acidosis','GOLDMARK: Glycols (ethylene glycol, propylene glycol), Oxoproline (chronic paracetamol), L-lactate, D-lactate, Methanol, Aspirin (salicylate), Renal failure, Ketoacidosis (diabetic, alcoholic, starvation).','Lactate, β-hydroxybutyrate, creatinine and urea, serum osmolality with osmolar gap, salicylate level, paracetamol history.'],
+  nagma:['Normal anion gap metabolic acidosis','Diarrhea or other GI bicarbonate loss, renal tubular acidosis (proximal, distal, type 4), large-volume saline, pancreatic or biliary drainage, ureteric diversion, acetazolamide, early renal failure.','Urine anion gap (Na⁺ + K⁺ − Cl⁻): negative points to GI loss, positive to renal cause. Urine pH, serum K⁺.'],
+  malk:['Metabolic alkalosis','Chloride-responsive (urine Cl⁻ <20): vomiting or NG suction, prior diuretics, contraction, post-hypercapnia. Chloride-resistant (urine Cl⁻ >20): hyperaldosteronism, Cushing, severe hypokalemia, Bartter or Gitelman, active diuretics, alkali load.','Urine chloride and potassium, volume status, blood pressure, renin and aldosterone if hypertensive.'],
+  racid:['Respiratory acidosis','Hypoventilation: CNS depression (opioids, sedatives), neuromuscular disease (GBS, myasthenia, ALS, cord injury), chest wall or pleural disease, obesity hypoventilation, COPD or asthma, severe parenchymal disease with high dead space, increased CO₂ production on fixed ventilation.','A–a gradient: normal points to extrapulmonary hypoventilation, raised to intrinsic lung disease. Chest X-ray, toxicology, spirometry or negative inspiratory force where relevant.'],
+  ralk:['Respiratory alkalosis','Hypoxemia, pulmonary embolism, pneumonia or interstitial disease, pulmonary edema, pain or anxiety, sepsis, salicylate toxicity, liver failure, pregnancy, CNS lesions, fever, altitude, iatrogenic over-ventilation.','A–a gradient and SpO₂, CT pulmonary angiography if PE suspected, salicylate level, review ventilator minute ventilation.']
+};
+
+/* ---------- ventilator ---------- */
+function ventCalc(v){
+  if(v.pco2==null||v.rr==null) return {ready:false,need:'Enter the current PaCO₂ and set rate.'};
+  const rrEff=(v.trr!=null&&v.trr>0)?Math.max(v.trr,v.rr):v.rr;
+  let target=null,tText='';
+  if(v.mode==='ph'){
+    if(v.hco3==null||v.tph==null) return {ready:false,need:'Enter HCO₃⁻ and a goal pH.'};
+    target=v.hco3/(0.03*Math.pow(10,v.tph-6.1)); tText=`pH ${r(v.tph,2)} at HCO₃⁻ ${r(v.hco3)}`;
+  } else if(v.mode==='pco2'){
+    if(v.tpco2==null) return {ready:false,need:'Enter a goal PaCO₂.'};
+    target=v.tpco2; tText='goal entered';
+  } else {
+    if(v.hco3==null) return {ready:false,need:"Enter HCO₃⁻ to apply Winter's formula."};
+    target=1.5*v.hco3+8; tText=`Winter's: 1.5 × ${r(v.hco3)} + 8`;
+  }
+  if(!(target>5&&target<150)) return {ready:false,need:'The calculated target PaCO₂ is out of range. Check goal values.'};
+  const ratio=v.pco2/target;
+  const pbw=(v.ht!=null&&v.sex)?((v.sex==='m'?50:45.5)+0.91*(v.ht-152.4)):null;
+  const vd=pbw!=null?2.2*pbw+(v.dd||0):null;
+  const vtNow=v.vt;
+  const ti=v.ti||1.0, minTe=v.minTe||1.5;
+  const warn=[];
+  if(pbw!=null&&pbw<=0) return {ready:false,need:'Height and sex give an invalid predicted body weight.'};
+  const canVt=pbw!=null&&vtNow!=null&&vtNow>vd;
+  if(pbw!=null&&vtNow!=null&&vtNow<=vd) warn.push('Tidal volume is not larger than estimated dead space; tidal volume options are hidden.');
+  if(v.trr!=null&&v.trr>v.rr) warn.push(`Patient is triggering above the set rate (total ${r(v.trr,0)} vs set ${r(v.rr,0)}). A higher set rate changes ventilation only if it exceeds the patient's own rate. Address drive, pain and sedation, or switch to a controlled mode.`);
+
+  function row(name,rr,vt){
+    rr=Math.max(1,Math.round(rr));
+    let act;
+    if(vt!=null&&canVt&&vt!==vtNow) act=(rr*(vt-vd))/(rrEff*(vtNow-vd)); else act=rr/rrEff;
+    const pP=v.pco2/act;
+    const pPh=v.hco3!=null?6.1+Math.log10(v.hco3/(0.03*pP)):null;
+    const vtU=vt!=null?vt:vtNow;
+    const mv=vtU!=null?rr*vtU/1000:null;
+    const te=60/rr-ti;
+    const ie=te>0?'1:'+(te/ti).toFixed(1):'n/a';
+    const mlkg=(pbw&&vtU)?vtU/pbw:null;
+    const fl=[];
+    if(rr>35) fl.push('Rate above 35/min');
+    if(te<=0) fl.push('Inspiratory time is not shorter than the cycle time');
+    else if(te<minTe) fl.push(`Expiratory time ${r(te)} s: auto-PEEP risk`);
+    if(mlkg!=null&&mlkg>8) fl.push(`Vt ${r(mlkg)} mL/kg PBW is above 8`);
+    if(mlkg!=null&&mlkg<4) fl.push(`Vt ${r(mlkg)} mL/kg PBW is below 4`);
+    if(mv!=null&&mv>=20) fl.push('Minute ventilation ≥20 L/min');
+    if(rr<8) fl.push('Rate <8/min: confirm triggering and apnea backup');
+    const hard=rr>35||te<minTe||(mlkg!=null&&(mlkg>8||mlkg<4));
+    return {name,rr,vt:vtU,mlkg,mv,te,ie,pP,pPh,flags:fl,hard};
+  }
+  const rows=[];
+  rows.push(row('Change rate only',rrEff*ratio,vtNow));
+  if(canVt){
+    const r10=x=>Math.round(x/10)*10;
+    [6,8].forEach(k=>{
+      const vt=r10(k*pbw);
+      if(vt>vd+20) rows.push(row(`Vt ${k} mL/kg PBW and rate`,rrEff*ratio*(vtNow-vd)/(vt-vd),vt));
+    });
+    const vtN=r10(vd+(vtNow-vd)*ratio);
+    if(vtN>vd+20) rows.push(row('Change tidal volume only',rrEff,vtN));
+  }
+  const rec=rows.find(x=>!x.hard)||null;
+  if(!rec) warn.push(`No option stays inside the limits (rate ≤35/min, Vt 4–8 mL/kg PBW, expiratory time ≥${minTe} s). The target may not be reachable by ventilator changes alone: accept permissive hypercapnia, treat the cause, and consider bicarbonate, renal replacement or extracorporeal CO₂ removal per clinical context.`);
+  const mvNow=vtNow!=null?rrEff*vtNow/1000:null;
+  return {ready:true,target,tText,ratio,pbw,vd,rrEff,mvNow,mlkgNow:(pbw&&vtNow)?vtNow/pbw:null,rows,rec,warn,canVt};
+}
+/*LOGIC_END*/
+
+/* ---------- UI ---------- */
+const $=id=>document.getElementById(id);
+const val=id=>{const x=parseFloat($(id).value);return Number.isFinite(x)?x:null};
+const state={sample:'art',scen:null,mode:'ph',last:null};
+
+function readInputs(){
+  return {ph:val('ph'),pco2:val('pco2'),hco3:val('hco3'),na:val('na'),cl:val('cl'),alb:val('alb'),lac:val('lac'),pao2:val('pao2'),fio2:val('fio2'),age:val('age'),patm:val('patm'),sample:state.sample};
+}
+
+function nomogram(A){
+  const W=340,H=300,L=38,Rm=10,T=10,Bt=36,x0=10,x1=100,y0=4,y1=50;
+  const sx=x=>L+(x-x0)/(x1-x0)*(W-L-Rm), sy=y=>H-Bt-(y-y0)/(y1-y0)*(H-T-Bt);
+  const poly=p=>p.map(q=>sx(q[0]).toFixed(1)+','+sy(q[1]).toFixed(1)).join(' ');
+  let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Acid-base map with the patient's PaCO2 ${r(A.pco2,0)} and bicarbonate ${r(A.hco3,0)} plotted against expected bands for each simple disorder"><style>
+  .ax{stroke:var(--line);stroke-width:1}.tk{fill:var(--muted);font-size:10px}.lb{fill:var(--ink);font-size:9.5px;paint-order:stroke;stroke:var(--surface);stroke-width:3px}
+  .ph{fill:none;stroke:var(--muted);stroke-width:.9;stroke-dasharray:3 3;opacity:.7}.pl{fill:var(--muted);font-size:9px;paint-order:stroke;stroke:var(--surface);stroke-width:3px}</style>`;
+  for(let y=10;y<=50;y+=10) s+=`<line class="ax" x1="${L}" x2="${W-Rm}" y1="${sy(y)}" y2="${sy(y)}"/><text class="tk" x="${L-5}" y="${sy(y)+3}" text-anchor="end">${y}</text>`;
+  for(let x=20;x<=100;x+=20) s+=`<line class="ax" y1="${T}" y2="${H-Bt}" x1="${sx(x)}" x2="${sx(x)}"/><text class="tk" x="${sx(x)}" y="${H-Bt+13}" text-anchor="middle">${x}</text>`;
+  s+=`<text class="tk" x="${(L+W-Rm)/2}" y="${H-6}" text-anchor="middle">PaCO₂ (mmHg)</text><text class="tk" transform="translate(10 ${(T+H-Bt)/2}) rotate(-90)" text-anchor="middle">HCO₃⁻ (mEq/L)</text>`;
+  [6.8,7.0,7.2,7.4,7.6].forEach(p=>{
+    const pts=[];for(let x=10;x<=100;x+=1){const y=0.03*x*Math.pow(10,p-6.1);if(y>=y0&&y<=y1)pts.push([x,y]);}
+    if(pts.length<2)return;
+    s+=`<polyline class="ph" points="${poly(pts)}"/>`;
+    const last=pts[pts.length-1];
+    if(last[1]>=y1-0.6) s+=`<text class="pl" x="${sx(last[0])+3}" y="${sy(y1)+9}">${p.toFixed(1)}</text>`;
+    else s+=`<text class="pl" x="${sx(last[0])-2}" y="${sy(last[1])-3}" text-anchor="end">pH ${p.toFixed(1)}</text>`;
+  });
+  const band=(pts,c,o,dash)=>`<polygon points="${poly(pts)}" fill="var(--${c})" fill-opacity="${o}" stroke="var(--${c})" stroke-opacity=".55" stroke-width="1"${dash?' stroke-dasharray="3 2"':''}/>`;
+  s+=band([[12,4],[42,24],[46,24],[16,4]],'acid',.24);
+  s+=band([[35,24],[53.2,50],[63.2,50],[45,24]],'base',.2);
+  s+=band([[40,22],[100,43],[100,47],[40,26]],'acid',.1,true);
+  s+=band([[40,22],[100,28],[100,32],[40,26]],'acid',.26);
+  s+=band([[10,10],[40,22],[40,26],[10,14]],'base',.1,true);
+  s+=band([[10,16],[40,22],[40,26],[10,20]],'base',.24);
+  s+=`<rect x="${sx(35)}" y="${sy(26)}" width="${sx(45)-sx(35)}" height="${sy(22)-sy(26)}" fill="none" stroke="var(--ok)" stroke-width="1.6"/>`;
+  s+=`<text class="lb" x="${sx(27)}" y="${sy(9)}">Metabolic acidosis</text>`;
+  s+=`<text class="lb" x="${sx(64)}" y="${sy(45)}">Metabolic alkalosis</text>`;
+  s+=`<text class="lb" x="${sx(99)}" y="${sy(34.6)}" text-anchor="end">Acute resp. acidosis</text>`;
+  s+=`<text class="lb" x="${sx(97)}" y="${sy(49)}" text-anchor="end">Chronic resp. acidosis</text>`;
+  s+=`<text class="lb" x="${sx(11)}" y="${sy(22.5)}">Acute resp. alkalosis</text>`;
+  s+=`<text class="lb" x="${sx(11)}" y="${sy(8.6)}" dx="86">Chronic resp. alkalosis</text>`;
+  const px=sx(clamp(A.pco2,x0,x1)), py=sy(clamp(A.hco3,y0,y1));
+  s+=`<line x1="${px}" x2="${px}" y1="${py}" y2="${H-Bt}" stroke="var(--ink)" stroke-width="1" stroke-dasharray="2 3"/><line x1="${L}" x2="${px}" y1="${py}" y2="${py}" stroke="var(--ink)" stroke-width="1" stroke-dasharray="2 3"/>`;
+  s+=`<circle cx="${px}" cy="${py}" r="7" fill="var(--ink)" stroke="var(--surface)" stroke-width="2.5"/>`;
+  return s+'</svg>';
+}
+
+function renderInterpret(){
+  const A=analyze(readInputs()); state.last=A.ready?A:null;
+  const el=$('res');
+  if(!A.ready){
+    el.innerHTML=A.errs?`<div class="note" style="margin-top:18px">${A.errs.join('<br>')}</div>`:`<p class="hint" style="margin-top:18px">Enter pH and PaCO₂ to start. Bicarbonate is calculated if left blank. Add Na⁺ and Cl⁻ to find hidden metabolic disorders, even when pH is normal.</p>`;
+    return;
+  }
+  let h=`<section class="verdict ${A.tone}"><p class="state">pH ${r(A.ph,2)}, ${A.phLabel.toLowerCase()}</p><h2>${A.headline}</h2>`;
+  if(A.flags.length) h+=`<ul class="flags">${A.flags.map(f=>`<li class="${f.c}">${f.t}</li>`).join('')}</ul>`;
+  h+=`<div class="row"><button class="btn" id="toVent" type="button">Plan ventilator settings</button><button class="btn ghost" id="copy" type="button">Copy summary</button></div></section>`;
+  h+=`<section class="block"><h2>Where the gas falls</h2><div class="map">${nomogram(A)}<p class="cap">The dot is this patient. Shaded bands are the expected range for each simple disorder (solid: acute or Winter's, dashed: chronic). A dot outside every band, or inside the green box (normal), tells you about mixed disorders. Dashed grey lines are pH lines.</p></div></section>`;
+  h+=`<section class="block"><h2>Key values</h2><div class="tbl-wrap"><table><thead><tr><th>Parameter</th><th>Value</th><th>Reference</th></tr></thead><tbody>${A.rows.map(x=>`<tr><td>${x[0]}</td><td class="abn ${x[3]}">${x[1]}</td><td>${x[2]}</td></tr>`).join('')}</tbody></table></div></section>`;
+  h+=`<section class="block"><h2>Reasoning, step by step</h2><ol class="steps">${A.steps.map(s=>`<li><div class="st-h">${s.title}</div><span class="st-r ${s.tone==='ok'?'':s.tone}">${s.res}</span><div class="st-b">${s.html}</div></li>`).join('')}</ol></section>`;
+  const ck=[...new Set(A.ck)];
+  if(ck.length) h+=`<section class="block"><h2>Likely causes and next tests</h2><div class="tbl-wrap"><table><thead><tr><th>Disorder</th><th>Think of</th><th>Next tests</th></tr></thead><tbody>${ck.map(k=>`<tr><td><b>${CAUSES[k][0]}</b></td><td>${CAUSES[k][1]}</td><td>${CAUSES[k][2]}</td></tr>`).join('')}</tbody></table></div></section>`;
+  el.innerHTML=h;
+  $('toVent').onclick=()=>importToVent(true);
+  $('copy').onclick=async e=>{const ok=await copyText(summaryText(A));e.target.textContent=ok?'Copied':'Copy failed';setTimeout(()=>{e.target.textContent='Copy summary'},1600)};
+}
+
+function summaryText(A){
+  const strip=x=>{const d=document.createElement('div');d.innerHTML=x.replace(/<\/p>|<br>|<\/div>/g,'\n');return d.textContent.replace(/\n{2,}/g,'\n').trim()};
+  let t=`ABG interpretation\npH ${r(A.ph,2)} | PaCO2 ${r(A.pco2)} | HCO3 ${r(A.hco3)}${A.hco3given?'':' (calculated)'}\nDiagnosis: ${A.headline}\n\n`;
+  A.steps.forEach((s,i)=>{t+=`${i+1}. ${s.title}: ${s.res}\n${strip(s.html)}\n\n`});
+  return t.trim();
+}
+async function copyText(t){
+  try{await navigator.clipboard.writeText(t);return true}catch(e){
+    const ta=document.createElement('textarea');ta.value=t;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();
+    let ok=false;try{ok=document.execCommand('copy')}catch(_){}ta.remove();return ok;
+  }
+}
+
+/* examples */
+const EX={
+  dka:{ph:7.17,pco2:17,hco3:6,na:138,cl:100,alb:4,lac:'',pao2:'',fio2:'',age:'',sample:'art'},
+  sal:{ph:7.36,pco2:22,hco3:12,na:140,cl:100,alb:4,lac:2,pao2:'',fio2:'',age:'',sample:'art'},
+  sep:{ph:7.22,pco2:24,hco3:9.5,na:140,cl:112,alb:2,lac:6,pao2:'',fio2:'',age:'',sample:'art'},
+  copd:{ph:7.33,pco2:65,hco3:33,na:'',cl:'',alb:'',lac:'',pao2:58,fio2:21,age:65,sample:'art'},
+  opi:{ph:7.15,pco2:80,hco3:27,na:'',cl:'',alb:'',lac:'',pao2:45,fio2:21,age:30,sample:'art'},
+  vom:{ph:7.52,pco2:48,hco3:38,na:138,cl:88,alb:4,lac:'',pao2:'',fio2:'',age:'',sample:'art'}
+};
+$('ex').onchange=e=>{
+  const x=EX[e.target.value]; if(!x) return;
+  ['ph','pco2','hco3','na','cl','alb','lac','pao2','fio2','age'].forEach(k=>{$(k).value=x[k]===''?'':x[k]});
+  setSample(x.sample); renderInterpret(); e.target.value='';
+};
+$('clear').onclick=()=>{['ph','pco2','hco3','na','cl','alb','lac','pao2','fio2','age','patm'].forEach(k=>$(k).value='');renderInterpret()};
+['ph','pco2','hco3','na','cl','alb','lac','pao2','fio2','age','patm'].forEach(k=>$(k).addEventListener('input',renderInterpret));
+function setSample(s){state.sample=s;document.querySelectorAll('[data-sample]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.sample===s))}
+document.querySelectorAll('[data-sample]').forEach(b=>b.onclick=()=>{setSample(b.dataset.sample);renderInterpret()});
+
+/* tabs */
+function showTab(t){
+  const i=t==='i';
+  $('p-i').hidden=!i;$('p-v').hidden=i;
+  $('tab-i').setAttribute('aria-selected',i);$('tab-v').setAttribute('aria-selected',!i);
+  window.scrollTo(0,0);
+}
+$('tab-i').onclick=()=>showTab('i');$('tab-v').onclick=()=>showTab('v');
+
+/* ventilator UI */
+const SCEN={
+  macid:{label:'Metabolic acidosis',mode:'winter',minTe:1.5,title:'Metabolic acidosis on the ventilator',
+    note:"Reproduce the minute ventilation the patient was generating before intubation: PaCO₂ near 1.5 × HCO₃⁻ + 8 (Winter's). Apnea or a low set rate after intubation drops that compensation and can worsen pH within minutes. Use Vt 6–8 mL/kg PBW with the rate raised as needed (often 25–35), watch plateau pressure and auto-PEEP, and recheck the gas in 15–30 minutes. Sodium bicarbonate generates CO₂, so it needs extra ventilation. Treat the cause; consider renal replacement for refractory acidemia."},
+  racid:{label:'Acute respiratory acidosis',mode:'ph',tph:7.38,minTe:1.5,title:'Acute respiratory acidosis',
+    note:'Goal is pH 7.35–7.40. Goal PaCO₂ is derived from the current HCO₃⁻, which is appropriate when HCO₃⁻ is near normal (acute process). Treat the reversible cause (sedatives or opioids, airway obstruction). If obstructive lung disease is present, watch expiratory time and auto-PEEP before pushing the rate.'},
+  chronic:{label:'Chronic hypercapnia (COPD)',mode:'ph',tph:7.35,minTe:3,title:'Chronic hypercapnia',
+    note:"Target the patient's baseline PaCO₂ (pH about 7.35), not 40 mmHg. Retained HCO₃⁻ does not clear quickly, so normalizing PaCO₂ causes post-hypercapnic alkalemia (arrhythmia, seizure, failed weaning). Use a long expiratory time (I:E 1:3 or longer), a low rate, Vt 6–8 mL/kg PBW, and check for auto-PEEP."},
+  ards:{label:'ARDS, permissive hypercapnia',mode:'ph',tph:7.30,minTe:1.5,title:'ARDS with permissive hypercapnia',
+    note:'ARDSNet approach: Vt 6 mL/kg PBW, plateau ≤30 cmH₂O, goal pH 7.30–7.45. If pH is 7.15–7.30, raise the rate (maximum 35) until pH >7.30 or PaCO₂ <25. If pH <7.15, raise the rate to 35, then increase Vt in 1 mL/kg steps (plateau may exceed 30) and consider bicarbonate. Tolerate hypercapnia if the pH goal is met.'},
+  icp:{label:'Raised ICP',mode:'pco2',tpco2:38,minTe:1.5,title:'Raised intracranial pressure',
+    note:'Aim for low-normal PaCO₂ (about 35–40). Hyperventilation to 30–35 is a brief bridge for impending herniation only; avoid PaCO₂ <30 (cerebral vasoconstriction and ischemia) and avoid hypercapnia (raises ICP). Confirm with end-tidal CO₂ trends and repeat gases.'},
+  over:{label:'Over-ventilated or alkalemic',mode:'ph',tph:7.42,minTe:1.5,title:'Alkalemia on the ventilator',
+    note:'Reduce minute ventilation to bring the pH toward 7.40–7.45. In post-hypercapnic alkalosis, allow PaCO₂ to return toward baseline. In metabolic alkalosis, avoid lowering PaCO₂ further and treat the cause (chloride, volume, potassium).'}
+};
+(function(){
+  const c=$('scen');
+  Object.keys(SCEN).forEach(k=>{
+    const b=document.createElement('button');b.type='button';b.className='chip';b.dataset.k=k;b.textContent=SCEN[k].label;b.setAttribute('aria-pressed','false');
+    b.onclick=()=>setScen(k);c.appendChild(b);
+  });
+})();
+function setMode(m){
+  state.mode=m;
+  document.querySelectorAll('#modeSeg button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.mode===m));
+  $('w_tph').hidden=m!=='ph';$('w_tpco2').hidden=m!=='pco2';
+  $('modeHint').textContent=m==='ph'?'Goal PaCO₂ is derived from the current HCO₃⁻ with Henderson–Hasselbalch.':m==='pco2'?'Enter the PaCO₂ you want directly.':"Goal PaCO₂ = 1.5 × HCO₃⁻ + 8: the compensation a healthy respiratory system would produce.";
+}
+document.querySelectorAll('#modeSeg button').forEach(b=>b.onclick=()=>{setMode(b.dataset.mode);renderVent()});
+function setScen(k){
+  state.scen=k;const s=SCEN[k];
+  document.querySelectorAll('#scen .chip').forEach(b=>b.setAttribute('aria-pressed',b.dataset.k===k));
+  setMode(s.mode);
+  if(s.tph!=null) $('v_tph').value=s.tph;
+  if(s.tpco2!=null) $('v_tpco2').value=s.tpco2;
+  const g=$('guide');g.hidden=false;g.innerHTML=`<strong>${s.title}</strong>${s.note}`;
+  renderVent();
+}
+function importToVent(go){
+  const A=state.last; if(!A){ if(go) showTab('v'); return; }
+  $('v_ph').value=r(A.ph,2);$('v_pco2').value=r(A.pco2);$('v_hco3').value=r(A.hco3);
+  if(go){
+    let k='racid';
+    if(A.primary==='macid') k='macid';
+    else if(A.primary==='racid') k=A.comp.kind==='chronic'?'chronic':'racid';
+    else if(A.primary==='malk'||A.primary==='ralk') k='over';
+    if(A.hag&&A.primary!=='macid'&&A.comp.kind==='add_macid') k='macid';
+    showTab('v');setScen(k);
+  } else renderVent();
+}
+$('imp').onclick=()=>importToVent(false);
+['v_ph','v_pco2','v_hco3','v_tph','v_tpco2','v_rr','v_trr','v_vt','v_ti','v_ht','v_dd'].forEach(k=>$(k).addEventListener('input',renderVent));
+$('v_sex').addEventListener('change',renderVent);
+
+function renderVent(){
+  const s=state.scen?SCEN[state.scen]:null;
+  const V=ventCalc({pco2:val('v_pco2'),hco3:val('v_hco3'),rr:val('v_rr'),trr:val('v_trr'),vt:val('v_vt'),ht:val('v_ht'),sex:$('v_sex').value,ti:val('v_ti'),dd:val('v_dd'),mode:state.mode,tph:val('v_tph'),tpco2:val('v_tpco2'),minTe:s?s.minTe:1.5});
+  const el=$('vres');
+  if(!V.ready){el.innerHTML=`<p class="hint" style="margin-top:14px">${V.need||''}</p>`;return}
+  const dir=V.ratio>1.02?'more':V.ratio<0.98?'less':'the same';
+  let h='';
+  if(V.rec){
+    const x=V.rec;
+    h+=`<section class="rec"><h2>Recommended: ${x.name.toLowerCase()}</h2><div class="big">Rate ${x.rr}/min${x.vt!=null?`, Vt ${r(x.vt,0)} mL`:''}</div>`+
+      `<p style="margin-top:6px">Expected PaCO₂ <b>${r(x.pP)} mmHg</b>${x.pPh!=null?`, pH <b>${r(x.pPh,2)}</b>`:''} (goal PaCO₂ ${r(V.target)}). ${x.mv!=null?`Minute ventilation ${r(x.mv)} L/min${V.mvNow!=null?` (now ${r(V.mvNow)})`:''}. `:''}Expiratory time ${r(x.te)} s, I:E ${x.ie}.</p>`+
+      `<p class="hint">Recheck an arterial gas 20–30 minutes after the change (up to 60 in chronic hypercapnia).</p></section>`;
+  }
+  h+=`<section class="block"><h2>What the target requires</h2><div class="eq">Goal PaCO₂ = ${B(r(V.target))} mmHg (${V.tText})<br>Alveolar ventilation needed = current PaCO₂ ÷ goal = ${r(V.pco2)} ÷ ${r(V.target)} = ${B(r(V.ratio,2)+'×')} (${dir} ventilation)<br>New rate = current total rate (${r(V.rrEff,0)}) × ${r(V.ratio,2)}${V.pbw!=null?`<br>PBW ${r(V.pbw,1)} kg, dead space ≈ 2.2 mL/kg + extra = ${r(V.vd,0)} mL`:''}${V.mlkgNow!=null?`<br>Current Vt ${r(V.mlkgNow,1)} mL/kg PBW`:''}</div></section>`;
+  h+=`<section class="block"><h2>All options</h2><div class="tbl-wrap"><table><thead><tr><th>Option</th><th>Rate</th><th>Vt mL (mL/kg)</th><th>MV L/min</th><th>Expected PaCO₂ / pH</th></tr></thead><tbody>`+
+    V.rows.map(x=>`<tr><td><b>${x.name}</b>${x.flags.length?`<br><span style="color:var(--warn);font-size:13.5px">${x.flags.join('; ')}</span>`:''}</td><td>${x.rr}</td><td>${x.vt!=null?r(x.vt,0)+(x.mlkg!=null?' ('+r(x.mlkg,1)+')':''):'–'}</td><td>${x.mv!=null?r(x.mv):'–'}</td><td>${r(x.pP)}${x.pPh!=null?' / '+r(x.pPh,2):''}</td></tr>`).join('')+`</tbody></table></div>`+
+    (V.canVt?'':'<p class="hint">Enter height, sex and tidal volume to see tidal volume options in mL/kg PBW.</p>')+`</section>`;
+  if(V.warn.length) h+=`<ul class="flags">${V.warn.map(w=>`<li>${w}</li>`).join('')}</ul>`;
+  h+=`<p class="hint" style="margin-top:12px">Assumes CO₂ production and the dead-space fraction stay constant and that HCO₃⁻ does not change over the next hour. Fever, sepsis, feeding and bicarbonate infusion raise CO₂ production and need more ventilation than calculated.</p>`;
+  el.innerHTML=h;
+}
+renderInterpret();
+</script>
+</body>
+</html>
